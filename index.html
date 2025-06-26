@@ -11,18 +11,21 @@
 <body>
   <h1>Personal Note Taker</h1>
   <button id="startBtn">Start Recording</button>
+  <button id="pauseBtn" disabled>Pause Recording</button>
   <button id="stopBtn" disabled>Stop Recording</button>
   <button id="downloadBtn" disabled>Download Notes</button>
   <textarea id="transcript" placeholder="Your notes will appear here..." readonly></textarea>
 
   <script>
     const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
     const stopBtn = document.getElementById('stopBtn');
     const downloadBtn = document.getElementById('downloadBtn');
     const transcriptArea = document.getElementById('transcript');
 
     let recognition;
     let isRecording = false;
+    let isPaused = false;
 
     if (!('webkitSpeechRecognition' in window)) {
       alert('Your browser does not support speech recognition. Please use Chrome.');
@@ -48,8 +51,8 @@
       };
 
       recognition.onend = () => {
-        if (isRecording) {
-          recognition.start();
+        if (isRecording && !isPaused) {
+          recognition.start(); // auto-restart unless paused
         }
       };
     }
@@ -58,10 +61,25 @@
       if (!isRecording) {
         recognition.start();
         isRecording = true;
+        isPaused = false;
         startBtn.disabled = true;
+        pauseBtn.disabled = false;
+        pauseBtn.textContent = 'Pause Recording';
         stopBtn.disabled = false;
         downloadBtn.disabled = true;
         transcriptArea.value = '';
+      }
+    };
+
+    pauseBtn.onclick = () => {
+      if (!isPaused) {
+        recognition.stop();
+        isPaused = true;
+        pauseBtn.textContent = 'Resume Recording';
+      } else {
+        recognition.start();
+        isPaused = false;
+        pauseBtn.textContent = 'Pause Recording';
       }
     };
 
@@ -69,9 +87,12 @@
       if (isRecording) {
         recognition.stop();
         isRecording = false;
+        isPaused = false;
         startBtn.disabled = false;
+        pauseBtn.disabled = true;
         stopBtn.disabled = true;
         downloadBtn.disabled = false;
+        pauseBtn.textContent = 'Pause Recording';
       }
     };
 
