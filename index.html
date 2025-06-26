@@ -133,7 +133,7 @@
     <button id="saveBtn" disabled>💾 Save</button>
     <button id="downloadBtn" disabled>⬇️ Download</button>
     <button id="exportPdfBtn">Export PDF</button>
-    <button id="exportDocxBtn">Export DOCX</button>
+    <button id="downloadAudioBtn" disabled>⬇️ Download Audio</button>
     <button id="toggleDark">🌙 Dark Mode</button>
     <select id="languageSelect" title="Select language">
       <option value="en-US">English (US)</option>
@@ -168,6 +168,7 @@
     const downloadBtn = document.getElementById('downloadBtn');
     const exportPdfBtn = document.getElementById('exportPdfBtn');
     const exportDocxBtn = document.getElementById('exportDocxBtn');
+    const downloadAudioBtn = document.getElementById('downloadAudioBtn');
     const toggleDark = document.getElementById('toggleDark');
     const languageSelect = document.getElementById('languageSelect');
     const transcriptArea = document.getElementById('transcript');
@@ -179,19 +180,10 @@
     let isRecording = false;
     let isPaused = false;
 
-    // Utility for keyword highlight (simple example)
-    const keywords = ['important', 'deadline', 'urgent', 'todo', 'note'];
-    function highlightKeywords(text) {
-      let escapedText = text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-      keywords.forEach(kw => {
-        const regex = new RegExp(`\\b(${kw})\\b`, 'gi');
-        escapedText = escapedText.replace(regex, '<mark>$1</mark>');
-      });
-      return escapedText.replace(/\n/g, '<br>');
-    }
+    // For audio recording
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioBlob = null;
 
     // Dark mode toggle
     toggleDark.onclick = () => {
@@ -217,9 +209,11 @@
       tagInput.value = '';
       transcriptArea.value = '';
       downloadBtn.disabled = true;
+      downloadAudioBtn.disabled = true;
+      audioBlob = null;
     };
 
-    // Download as text
+    // Download notes as text
     downloadBtn.onclick = () => {
       const blob = new Blob([transcriptArea.value], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
@@ -270,7 +264,6 @@
           }
         }
         transcriptArea.value += transcript;
-        applyHighlight();
         localStorage.setItem('currentNote', transcriptArea.value);
         saveBtn.disabled = false;
         downloadBtn.disabled = false;
@@ -293,6 +286,14 @@
       stopBtn.disabled = false;
       saveBtn.disabled = true;
       downloadBtn.disabled = true;
+
+      // Start a new note: clear transcript and tags input
+      transcriptArea.value = '';
+      tagInput.value = '';
+      
+      // Reset audio recording states
+      audioBlob = null;
+      downloadAudioBtn.disabled = true;
     };
 
     pauseBtn.onclick = () => {
@@ -340,7 +341,6 @@
               tagInput.value = (noteObj.tags || []).join(', ');
               saveBtn.disabled = false;
               downloadBtn.disabled = false;
-              applyHighlight();
             };
             noteList.appendChild(div);
           }
@@ -349,12 +349,6 @@
 
     // Search input event
     searchInput.oninput = loadSavedNotes;
-
-    // Keyword highlight in textarea (simple implementation)
-    function applyHighlight() {
-      // As textarea cannot have innerHTML, simulate by styling text in place (optional)
-      // For demo: do nothing here, but can implement advanced highlight with contenteditable div instead
-    }
 
     // Save current note on page unload
     window.onbeforeunload = () => {
@@ -367,14 +361,10 @@
       transcriptArea.value = localStorage.getItem('currentNote') || '';
       tagInput.value = localStorage.getItem('currentTags') || '';
       loadSavedNotes();
-      applyHighlight();
     };
 
     // --- Audio Recording + Playback Feature ---
-    // We'll use MediaRecorder API to record audio and allow playback synced with transcript
 
-    let mediaRecorder;
-    let audioChunks = [];
     const audioPlayer = document.createElement('audio');
     audioPlayer.controls = true;
     audioPlayer.style.width = '100%';
@@ -392,10 +382,10 @@
 
         mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
         mediaRecorder.onstop = e => {
-          const audioBlob = new Blob(audioChunks);
+          audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
           const audioUrl = URL.createObjectURL(audioBlob);
           audioPlayer.src = audioUrl;
-          // Optionally save audioBlob or associate with transcript
+          downloadAudioBtn.disabled = false;
         };
 
         mediaRecorder.start();
@@ -433,21 +423,20 @@
       audioStopBtn.disabled = true;
       audioStartBtn.disabled = false;
     };
-    startBtn.onclick = () => {
-  recognition.lang = languageSelect.value;
-  recognition.start();
-  isRecording = true;
-  isPaused = false;
-  startBtn.disabled = true;
-  pauseBtn.disabled = false;
-  stopBtn.disabled = false;
-  saveBtn.disabled = true;
-  downloadBtn.disabled = true;
 
-  // Start a new note: clear transcript and tags input
-  transcriptArea.value = '';
-  tagInput.value = '';
-};
+    // Download recorded audio as file
+    downloadAudioBtn.onclick = () => {
+      if (!audioBlob) {
+        alert('No audio recorded yet.');
+        return;
+      }
+      const url = URL.createObjectURL(audioBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'PersonalNoteTaker_AudioRecording.webm';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
   </script>
 </body>
 </html>
