@@ -433,6 +433,21 @@
       audioStopBtn.disabled = true;
       audioStartBtn.disabled = false;
     };
+    startBtn.onclick = () => {
+  recognition.lang = languageSelect.value;
+  recognition.start();
+  isRecording = true;
+  isPaused = false;
+  startBtn.disabled = true;
+  pauseBtn.disabled = false;
+  stopBtn.disabled = false;
+  saveBtn.disabled = true;
+  downloadBtn.disabled = true;
+
+  // Start a new note: clear transcript and tags input
+  transcriptArea.value = '';
+  tagInput.value = '';
+};
   </script>
 </body>
 </html>
