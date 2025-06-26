@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Personal Note Taker</title>
   <style>
     body {
@@ -17,9 +17,16 @@
       background-color: #121212;
       color: #f0f0f0;
     }
-    h1 { margin-bottom: 10px; }
+    h1 {
+      margin-bottom: 10px;
+      text-align: center;
+    }
     .controls {
       margin-bottom: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
     }
     textarea {
       width: 100%;
@@ -28,11 +35,44 @@
       padding: 10px;
       margin-top: 10px;
       resize: vertical;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      background-color: #fafafa;
+      color: #222;
+      transition: background 0.3s, color 0.3s;
     }
-    button, select {
-      margin-right: 10px;
+    body.dark textarea {
+      background-color: #2b2b2b;
+      color: #eee;
+      border-color: #555;
+    }
+    button,
+    select,
+    input[type="text"] {
       padding: 10px 15px;
       font-size: 14px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      background-color: #f0f0f0;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover,
+    select:hover,
+    input[type="text"]:hover {
+      background-color: #ddd;
+    }
+    body.dark button,
+    body.dark select,
+    body.dark input[type="text"] {
+      background-color: #3a3a3a;
+      border-color: #555;
+      color: #eee;
+    }
+    body.dark button:hover,
+    body.dark select:hover,
+    body.dark input[type="text"]:hover {
+      background-color: #505050;
     }
     #savedNotes {
       margin-top: 20px;
@@ -44,9 +84,42 @@
       padding: 8px;
       margin-bottom: 5px;
       cursor: pointer;
+      border-radius: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      user-select: none;
+      transition: background 0.2s;
+    }
+    .noteItem:hover {
+      background: #ccc;
     }
     body.dark .noteItem {
       background: #2b2b2b;
+    }
+    body.dark .noteItem:hover {
+      background: #444;
+    }
+    #searchTagsContainer {
+      margin-top: 15px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #tagInput {
+      flex-grow: 1;
+      min-width: 200px;
+    }
+    @media (max-width: 600px) {
+      .controls {
+        flex-direction: column;
+      }
+      button,
+      select,
+      input[type="text"] {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -59,8 +132,10 @@
     <button id="stopBtn" disabled>Stop</button>
     <button id="saveBtn" disabled>💾 Save</button>
     <button id="downloadBtn" disabled>⬇️ Download</button>
+    <button id="exportPdfBtn">Export PDF</button>
+    <button id="exportDocxBtn">Export DOCX</button>
     <button id="toggleDark">🌙 Dark Mode</button>
-    <select id="languageSelect">
+    <select id="languageSelect" title="Select language">
       <option value="en-US">English (US)</option>
       <option value="en-GB">English (UK)</option>
       <option value="hi-IN">Hindi</option>
@@ -70,10 +145,20 @@
 
   <textarea id="transcript" placeholder="Your notes will appear here... (Editable)"></textarea>
 
+  <!-- Search + Tagging -->
+  <div id="searchTagsContainer">
+    <input id="tagInput" type="text" placeholder="Add tags (comma separated)" />
+    <input id="searchInput" type="text" placeholder="Search saved notes..." />
+  </div>
+
   <div id="savedNotes">
     <h2>📁 Saved Notes</h2>
     <div id="noteList"></div>
   </div>
+
+  <!-- Libraries for PDF/DOCX export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.4.0/html-docx.min.js"></script>
 
   <script>
     const startBtn = document.getElementById('startBtn');
@@ -81,29 +166,57 @@
     const stopBtn = document.getElementById('stopBtn');
     const saveBtn = document.getElementById('saveBtn');
     const downloadBtn = document.getElementById('downloadBtn');
+    const exportPdfBtn = document.getElementById('exportPdfBtn');
+    const exportDocxBtn = document.getElementById('exportDocxBtn');
     const toggleDark = document.getElementById('toggleDark');
     const languageSelect = document.getElementById('languageSelect');
     const transcriptArea = document.getElementById('transcript');
     const noteList = document.getElementById('noteList');
+    const tagInput = document.getElementById('tagInput');
+    const searchInput = document.getElementById('searchInput');
 
     let recognition;
     let isRecording = false;
     let isPaused = false;
+
+    // Utility for keyword highlight (simple example)
+    const keywords = ['important', 'deadline', 'urgent', 'todo', 'note'];
+    function highlightKeywords(text) {
+      let escapedText = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      keywords.forEach(kw => {
+        const regex = new RegExp(`\\b(${kw})\\b`, 'gi');
+        escapedText = escapedText.replace(regex, '<mark>$1</mark>');
+      });
+      return escapedText.replace(/\n/g, '<br>');
+    }
 
     // Dark mode toggle
     toggleDark.onclick = () => {
       document.body.classList.toggle('dark');
     };
 
-    // Save note manually
+    // Save note manually with tags
     saveBtn.onclick = () => {
       const content = transcriptArea.value.trim();
-      if (content) {
-        const key = 'note_' + new Date().toISOString();
-        localStorage.setItem(key, content);
-        loadSavedNotes();
-        saveBtn.disabled = true;
+      if (!content) {
+        alert('Cannot save empty note.');
+        return;
       }
+      const tags = tagInput.value
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+      const key = 'note_' + new Date().toISOString();
+      const noteObj = { content, tags };
+      localStorage.setItem(key, JSON.stringify(noteObj));
+      loadSavedNotes();
+      saveBtn.disabled = true;
+      tagInput.value = '';
+      transcriptArea.value = '';
+      downloadBtn.disabled = true;
     };
 
     // Download as text
@@ -117,7 +230,28 @@
       URL.revokeObjectURL(url);
     };
 
-    // Setup recognition
+    // Export as PDF
+    exportPdfBtn.onclick = () => {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.setFontSize(12);
+      const lines = doc.splitTextToSize(transcriptArea.value, 180);
+      doc.text(lines, 10, 10);
+      doc.save('PersonalNoteTaker_Notes.pdf');
+    };
+
+    // Export as DOCX
+    exportDocxBtn.onclick = () => {
+      const content = `<html><body><pre>${transcriptArea.value}</pre></body></html>`;
+      const converted = htmlDocx.asBlob(content);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(converted);
+      a.download = 'PersonalNoteTaker_Notes.docx';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+
+    // Setup speech recognition
     if (!('webkitSpeechRecognition' in window)) {
       alert('Please use Google Chrome for full functionality.');
     } else {
@@ -136,7 +270,10 @@
           }
         }
         transcriptArea.value += transcript;
+        applyHighlight();
         localStorage.setItem('currentNote', transcriptArea.value);
+        saveBtn.disabled = false;
+        downloadBtn.disabled = false;
       };
 
       recognition.onend = () => {
@@ -182,26 +319,119 @@
       pauseBtn.textContent = 'Pause';
     };
 
+    // Load and display saved notes with filtering
     function loadSavedNotes() {
+      const searchTerm = searchInput.value.toLowerCase();
       noteList.innerHTML = '';
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('note_')) {
-          const div = document.createElement('div');
-          div.className = 'noteItem';
-          div.textContent = key.replace('note_', '');
-          div.onclick = () => {
-            transcriptArea.value = localStorage.getItem(key);
-            saveBtn.disabled = false;
-          };
-          noteList.appendChild(div);
-        }
+
+      Object.keys(localStorage)
+        .filter(key => key.startsWith('note_'))
+        .forEach((key) => {
+          const noteObj = JSON.parse(localStorage.getItem(key));
+          const combinedText = (noteObj.content + ' ' + (noteObj.tags || []).join(' ')).toLowerCase();
+
+          if (!searchTerm || combinedText.includes(searchTerm)) {
+            const div = document.createElement('div');
+            div.className = 'noteItem';
+            div.title = `Tags: ${noteObj.tags ? noteObj.tags.join(', ') : 'None'}`;
+            div.textContent = key.replace('note_', '');
+            div.onclick = () => {
+              transcriptArea.value = noteObj.content;
+              tagInput.value = (noteObj.tags || []).join(', ');
+              saveBtn.disabled = false;
+              downloadBtn.disabled = false;
+              applyHighlight();
+            };
+            noteList.appendChild(div);
+          }
+        });
+    }
+
+    // Search input event
+    searchInput.oninput = loadSavedNotes;
+
+    // Keyword highlight in textarea (simple implementation)
+    function applyHighlight() {
+      // As textarea cannot have innerHTML, simulate by styling text in place (optional)
+      // For demo: do nothing here, but can implement advanced highlight with contenteditable div instead
+    }
+
+    // Save current note on page unload
+    window.onbeforeunload = () => {
+      localStorage.setItem('currentNote', transcriptArea.value);
+      localStorage.setItem('currentTags', tagInput.value);
+    };
+
+    // Load current note + tags + saved notes on page load
+    window.onload = () => {
+      transcriptArea.value = localStorage.getItem('currentNote') || '';
+      tagInput.value = localStorage.getItem('currentTags') || '';
+      loadSavedNotes();
+      applyHighlight();
+    };
+
+    // --- Audio Recording + Playback Feature ---
+    // We'll use MediaRecorder API to record audio and allow playback synced with transcript
+
+    let mediaRecorder;
+    let audioChunks = [];
+    const audioPlayer = document.createElement('audio');
+    audioPlayer.controls = true;
+    audioPlayer.style.width = '100%';
+    audioPlayer.style.marginTop = '10px';
+    document.body.insertBefore(audioPlayer, document.getElementById('savedNotes'));
+
+    function startAudioRecording() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert('Audio recording is not supported in your browser.');
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = e => {
+          const audioBlob = new Blob(audioChunks);
+          const audioUrl = URL.createObjectURL(audioBlob);
+          audioPlayer.src = audioUrl;
+          // Optionally save audioBlob or associate with transcript
+        };
+
+        mediaRecorder.start();
+      }).catch(e => {
+        alert('Microphone access denied or not available.');
       });
     }
 
-    // Load current note
-    window.onload = () => {
-      transcriptArea.value = localStorage.getItem('currentNote') || '';
-      loadSavedNotes();
+    function stopAudioRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    }
+
+    // Integrate audio recording buttons
+    const audioStartBtn = document.createElement('button');
+    audioStartBtn.textContent = '🎙️ Start Audio Recording';
+    audioStartBtn.style.marginRight = '10px';
+
+    const audioStopBtn = document.createElement('button');
+    audioStopBtn.textContent = '⏹️ Stop Audio Recording';
+    audioStopBtn.disabled = true;
+
+    document.querySelector('.controls').appendChild(audioStartBtn);
+    document.querySelector('.controls').appendChild(audioStopBtn);
+
+    audioStartBtn.onclick = () => {
+      startAudioRecording();
+      audioStartBtn.disabled = true;
+      audioStopBtn.disabled = false;
+    };
+
+    audioStopBtn.onclick = () => {
+      stopAudioRecording();
+      audioStopBtn.disabled = true;
+      audioStartBtn.disabled = false;
     };
   </script>
 </body>
