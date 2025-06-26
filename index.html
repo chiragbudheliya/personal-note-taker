@@ -1,101 +1,112 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Personal Note Taker</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; }
-    textarea { width: 100%; height: 200px; margin-top: 10px; }
-    button { margin-right: 10px; padding: 10px 15px; font-size: 16px; }
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 700px;
+      margin: auto;
+      padding: 20px;
+      background-color: #fff;
+      color: #000;
+      transition: background 0.3s, color 0.3s;
+    }
+    body.dark {
+      background-color: #121212;
+      color: #f0f0f0;
+    }
+    h1 { margin-bottom: 10px; }
+    .controls {
+      margin-bottom: 10px;
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      font-size: 16px;
+      padding: 10px;
+      margin-top: 10px;
+      resize: vertical;
+    }
+    button, select {
+      margin-right: 10px;
+      padding: 10px 15px;
+      font-size: 14px;
+    }
+    #savedNotes {
+      margin-top: 20px;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+    }
+    .noteItem {
+      background: #eee;
+      padding: 8px;
+      margin-bottom: 5px;
+      cursor: pointer;
+    }
+    body.dark .noteItem {
+      background: #2b2b2b;
+    }
   </style>
 </head>
 <body>
-  <h1>Personal Note Taker</h1>
-  <button id="startBtn">Start Recording</button>
-  <button id="pauseBtn" disabled>Pause Recording</button>
-  <button id="stopBtn" disabled>Stop Recording</button>
-  <button id="downloadBtn" disabled>Download Notes</button>
-  <textarea id="transcript" placeholder="Your notes will appear here..." readonly></textarea>
+  <h1>📝 Personal Note Taker</h1>
+
+  <div class="controls">
+    <button id="startBtn">Start</button>
+    <button id="pauseBtn" disabled>Pause</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <button id="saveBtn" disabled>💾 Save</button>
+    <button id="downloadBtn" disabled>⬇️ Download</button>
+    <button id="toggleDark">🌙 Dark Mode</button>
+    <select id="languageSelect">
+      <option value="en-US">English (US)</option>
+      <option value="en-GB">English (UK)</option>
+      <option value="hi-IN">Hindi</option>
+      <option value="fr-FR">French</option>
+    </select>
+  </div>
+
+  <textarea id="transcript" placeholder="Your notes will appear here... (Editable)"></textarea>
+
+  <div id="savedNotes">
+    <h2>📁 Saved Notes</h2>
+    <div id="noteList"></div>
+  </div>
 
   <script>
     const startBtn = document.getElementById('startBtn');
     const pauseBtn = document.getElementById('pauseBtn');
     const stopBtn = document.getElementById('stopBtn');
+    const saveBtn = document.getElementById('saveBtn');
     const downloadBtn = document.getElementById('downloadBtn');
+    const toggleDark = document.getElementById('toggleDark');
+    const languageSelect = document.getElementById('languageSelect');
     const transcriptArea = document.getElementById('transcript');
+    const noteList = document.getElementById('noteList');
 
     let recognition;
     let isRecording = false;
     let isPaused = false;
 
-    if (!('webkitSpeechRecognition' in window)) {
-      alert('Your browser does not support speech recognition. Please use Chrome.');
-    } else {
-      recognition = new webkitSpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+    // Dark mode toggle
+    toggleDark.onclick = () => {
+      document.body.classList.toggle('dark');
+    };
 
-      recognition.onresult = (event) => {
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            transcriptArea.value += event.results[i][0].transcript + '\n';
-          } else {
-            interimTranscript += event.results[i][0].transcript;
-          }
-        }
-      };
-
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error', event.error);
-      };
-
-      recognition.onend = () => {
-        if (isRecording && !isPaused) {
-          recognition.start(); // auto-restart unless paused
-        }
-      };
-    }
-
-    startBtn.onclick = () => {
-      if (!isRecording) {
-        recognition.start();
-        isRecording = true;
-        isPaused = false;
-        startBtn.disabled = true;
-        pauseBtn.disabled = false;
-        pauseBtn.textContent = 'Pause Recording';
-        stopBtn.disabled = false;
-        downloadBtn.disabled = true;
-        transcriptArea.value = '';
+    // Save note manually
+    saveBtn.onclick = () => {
+      const content = transcriptArea.value.trim();
+      if (content) {
+        const key = 'note_' + new Date().toISOString();
+        localStorage.setItem(key, content);
+        loadSavedNotes();
+        saveBtn.disabled = true;
       }
     };
 
-    pauseBtn.onclick = () => {
-      if (!isPaused) {
-        recognition.stop();
-        isPaused = true;
-        pauseBtn.textContent = 'Resume Recording';
-      } else {
-        recognition.start();
-        isPaused = false;
-        pauseBtn.textContent = 'Pause Recording';
-      }
-    };
-
-    stopBtn.onclick = () => {
-      if (isRecording) {
-        recognition.stop();
-        isRecording = false;
-        isPaused = false;
-        startBtn.disabled = false;
-        pauseBtn.disabled = true;
-        stopBtn.disabled = true;
-        downloadBtn.disabled = false;
-        pauseBtn.textContent = 'Pause Recording';
-      }
-    };
-
+    // Download as text
     downloadBtn.onclick = () => {
       const blob = new Blob([transcriptArea.value], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
@@ -104,6 +115,93 @@
       a.download = 'PersonalNoteTaker_Notes.txt';
       a.click();
       URL.revokeObjectURL(url);
+    };
+
+    // Setup recognition
+    if (!('webkitSpeechRecognition' in window)) {
+      alert('Please use Google Chrome for full functionality.');
+    } else {
+      recognition = new webkitSpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = languageSelect.value;
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const text = event.results[i][0].transcript;
+          const time = new Date().toLocaleTimeString();
+          if (event.results[i].isFinal) {
+            transcript += `[${time}] ${text.trim()}\n`;
+          }
+        }
+        transcriptArea.value += transcript;
+        localStorage.setItem('currentNote', transcriptArea.value);
+      };
+
+      recognition.onend = () => {
+        if (isRecording && !isPaused) {
+          recognition.start();
+        }
+      };
+    }
+
+    startBtn.onclick = () => {
+      recognition.lang = languageSelect.value;
+      recognition.start();
+      isRecording = true;
+      isPaused = false;
+      startBtn.disabled = true;
+      pauseBtn.disabled = false;
+      stopBtn.disabled = false;
+      saveBtn.disabled = true;
+      downloadBtn.disabled = true;
+    };
+
+    pauseBtn.onclick = () => {
+      if (!isPaused) {
+        recognition.stop();
+        isPaused = true;
+        pauseBtn.textContent = 'Resume';
+      } else {
+        recognition.start();
+        isPaused = false;
+        pauseBtn.textContent = 'Pause';
+      }
+    };
+
+    stopBtn.onclick = () => {
+      recognition.stop();
+      isRecording = false;
+      isPaused = false;
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+      stopBtn.disabled = true;
+      saveBtn.disabled = false;
+      downloadBtn.disabled = false;
+      pauseBtn.textContent = 'Pause';
+    };
+
+    function loadSavedNotes() {
+      noteList.innerHTML = '';
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('note_')) {
+          const div = document.createElement('div');
+          div.className = 'noteItem';
+          div.textContent = key.replace('note_', '');
+          div.onclick = () => {
+            transcriptArea.value = localStorage.getItem(key);
+            saveBtn.disabled = false;
+          };
+          noteList.appendChild(div);
+        }
+      });
+    }
+
+    // Load current note
+    window.onload = () => {
+      transcriptArea.value = localStorage.getItem('currentNote') || '';
+      loadSavedNotes();
     };
   </script>
 </body>
